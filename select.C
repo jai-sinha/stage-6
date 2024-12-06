@@ -1,6 +1,7 @@
 #include "catalog.h"
 #include "query.h"
-
+#include "stdio.h"
+#include "stdlib.h"
 
 // forward declaration
 const Status ScanSelect(const string & result, 
@@ -32,37 +33,46 @@ const Status QU_Select(const string & result,
 	// Make sure to give ScanSelect the proper input
 	Status status;
 	AttrDesc attrDescArr[projCnt];
-	AttrDesc *attrDesc = NULL;
-	int reclen;
+	AttrDesc *attrDesc = nullptr;
+	int reclen = 0;
 
 	// get info for all attributes in projNames, and total reclen
 	for (int i=0; i<projCnt; i++) {
+		attrDesc = new AttrDesc;
 		// To go from attrInfo to attrDesc, need to consult the catalog (attrCat and relCat, global variables)
 		status = attrCat->getInfo(projNames[i].relName, projNames[i].attrName, attrDescArr[i]);
-		if (status != OK) return status;
-
+		if (status != OK) {
+			delete attrDesc;
+			return status;
+		}
 		reclen += attrDescArr[i].attrLen;
 	}
 
 	// get attr info, or leave if null
-	if (attr != NULL) {
+	if (attr != nullptr) {
+        attrDesc = new AttrDesc;
 		status = attrCat->getInfo(attr->relName, attr->attrName, *attrDesc);
-		if (status != OK) return status;
+		if (status != OK) {
+			delete attrDesc;
+			return status;
+		}
 	}
 
 	// scanSelect call
-	return ScanSelect(result, projCnt, attrDescArr, attrDesc, op, attrValue, reclen);
+	status = ScanSelect(result, projCnt, attrDescArr, attrDesc, op, attrValue, reclen);
+    if (attrDesc != nullptr) {
+        delete attrDesc;
+    }
+    return status;
 }
 
-const Status ScanSelect(const string & result, // table to store output
-#include "stdio.h"
-#include "stdlib.h"
+const Status ScanSelect(const string & result, 
 			const int projCnt, 
-			const AttrDesc projNames[], // see below for desc of AttrDesc
-			const AttrDesc *attrDesc, // attr for selection
+			const AttrDesc projNames[], 
+			const AttrDesc *attrDesc, 
 			const Operator op, 
-			const char *filter, //attrValue
-			const int reclen) // length of output tuple
+			const char *filter, 
+			const int reclen) 
 {
    cout << "Doing HeapFileScan Selection using ScanSelect()" << endl;
 	
@@ -78,35 +88,43 @@ const Status ScanSelect(const string & result, // table to store output
 
 	// open "result" as an InsertFileScan object
 	InsertFileScan resultRel(result, status);
-	if (status != OK) return status;
+	if (status != OK){
+		free(outputRec.data);
+		return status;
+	}
 
 	// open current table (to be scanned) as a HeapFileScan object
 	HeapFileScan scan(projNames[0].relName, status);
-	if (status != OK) return status;
+	if (status != OK) {
+		free(outputRec.data);
+		return status;
+	}
 
 	// check if an unconditional scan is required
-	int type;
-	if (attrDesc == NULL) type = 0;
-	else type = attrDesc->attrType;
-
-	if (type == 0) status = scan.startScan(0, 0, STRING, NULL, EQ);
-
-	// check attrType: INTEGER, FLOAT, STRING
-	else if (type == STRING) {
-		status = scan.startScan(attrDesc->attrOffset, attrDesc->attrLen, STRING, filter, EQ);
+	if (attrDesc == nullptr) {
+		status = scan.startScan(0, 0, STRING, NULL, EQ);
+    } else {
+        switch (attrDesc->attrType) {
+            case STRING:
+                status = scan.startScan(attrDesc->attrOffset, attrDesc->attrLen, STRING, filter, op);
+                break;
+            case FLOAT: {
+                float f = atof(filter);
+                status = scan.startScan(attrDesc->attrOffset, attrDesc->attrLen, FLOAT, (char *)&f, op);
+                break;
+            }
+            case INTEGER: {
+                int i = atoi(filter);
+                status = scan.startScan(attrDesc->attrOffset, attrDesc->attrLen, INTEGER, (char *)&i, op);
+                break;
+        }
+    }
 	}
 
-	else if (type == FLOAT) {
-		float f = atof(filter);
-		status = scan.startScan(attrDesc->attrOffset, attrDesc->attrLen, FLOAT, (char *)&f, EQ);
+	if (status != OK) {
+      free(outputRec.data);
+		return status;
 	}
-
-	else if (type == INTEGER) {
-		int i = atoi(filter);
-		status = scan.startScan(attrDesc->attrOffset, attrDesc->attrLen, INTEGER, (char *)&i, EQ);
-	}
-
-	if (status != OK) return status;
 	
 	// scan the current table
 	while (scan.scanNext(rid) == OK) {
@@ -117,18 +135,9 @@ const Status ScanSelect(const string & result, // table to store output
 		// track outputRec offset as we add records to it
 		int offset = 0;
 		for (int i=0; i<projCnt; i++) {
-
-			type = projNames[i].attrType;
-			if (type == STRING) {
-				memcpy((char *)outputRec.data + offset, (char *)tmpRec.data + projNames[i].attrOffset, projNames[i].attrLen);
-			} else if (type == FLOAT) {
-				memcpy((char *)outputRec.data + offset, (float *)tmpRec.data + projNames[i].attrOffset, projNames[i].attrLen);
-			} else if (type == INTEGER) {
-				memcpy((char *)outputRec.data + offset, (int *)tmpRec.data + projNames[i].attrOffset, projNames[i].attrLen);
-			}
-
-			offset += projNames[i].attrLen;
-		}
+            memcpy((char *)outputRec.data + offset, (char *)tmpRec.data + projNames[i].attrOffset, projNames[i].attrLen);
+            offset += projNames[i].attrLen;
+        }
 
 		status = resultRel.insertRecord(outputRec, outRID);
 	}
@@ -141,4 +150,3 @@ const Status ScanSelect(const string & result, // table to store output
 
 	return OK;
 }
-
