@@ -1,77 +1,88 @@
 #include "catalog.h"
 #include "query.h"
 
-
 /*
  * Deletes records from a specified relation.
  *
  * Returns:
- * 	OK on success
- * 	an error code otherwise
+ *      OK on success
+ *      an error code otherwise
  */
 
-const Status QU_Delete(const string & relation, 
-		       const string & attrName, 
-		       const Operator op,
-		       const Datatype type, 
-		       const char *attrValue)
-{
-// part 6
-	Status status;
-	HeapFileScan* hfs;
-
-	// setting up the scans
-	if (relation.empty() || attrName.empty() || string(attrValue).empty()) 
+const Status QU_Delete(const string &relation, 
+                       const string &attrName, 
+                       const Operator op, 
+                       const Datatype type, 
+                       const char *attrValue) {
+	
+	cout << "Doing QU_Delete " << endl;
+	if (relation.empty()) 
 		return BADCATPARM;
 
-	hfs = new HeapFileScan(relation, status);// maybe I need to pass in ATTRCATNAME
+	Status status;
+	RID rid;
+
+	// Handle "delete all" case (when attrName is empty)
+	if (attrName.empty()) {
+		HeapFileScan hfs(relation, status);
+		if (status != OK) 
+			return status;
+
+		status = hfs.startScan(0, 0, STRING, NULL, EQ);  // Unconditional scan
+		if (status != OK) 
+			return status;
+
+		// Delete all records
+		while ((status = hfs.scanNext(rid)) == OK) {
+			status = hfs.deleteRecord();
+			if (status != OK) {
+				hfs.endScan();
+				return status;
+			}
+		}
+
+		hfs.endScan();
+		return (status == FILEEOF) ? OK : status;
+	}
+
+	// Get the attribute descriptor for the attribute name
+	AttrDesc attrDesc;
+	status = attrCat->getInfo(relation, attrName, attrDesc);
 	if (status != OK) return status;
 
-	// starting a scan to locate the qualifying tuples in the attr table
-	if ((status = hfs->startScan(0, sizeof(AttrDesc) + 1, type, attrValue, op)) != OK) {
-		delete hfs;
-		return status;
+	// Open a HeapFileScan on the relation
+	HeapFileScan hfs(relation, status);
+	if (status != OK) return status;
+
+	// Start scanning with the provided filter
+
+	switch (attrDesc.attrType) {
+            case STRING:
+                status = hfs.startScan(attrDesc.attrOffset, attrDesc.attrLen, STRING, attrValue, op);
+                break;
+            case FLOAT: {
+                float f = atof(attrValue);
+                status = hfs.startScan(attrDesc.attrOffset, attrDesc.attrLen, FLOAT, (char *)&f, op);
+                break;
+            }
+            case INTEGER: {
+                int i = atoi(attrValue);
+                status = hfs.startScan(attrDesc.attrOffset, attrDesc.attrLen, INTEGER, (char *)&i, op);
+                break;
+        }
 	}
+	if (status != OK) return status;
 
-	// tempory record to iterate over
-	RID rid;
-	Record rec;
-	
-	// temporary record to check against
-	AttrDesc record;
-
-	// looping through the attributes catalogue and deleting until no more qualifying records found 
-	while(status == OK) {
-		while((status = hfs->scanNext(rid)) == OK) {
-			if ((status = hfs->getRecord(rec)) != OK) {
-				hfs->endScan();
-				delete hfs;
-				return status;
-			}
-
-			assert(sizeof(AttrDesc) == rec.length);
-			memcpy(&record, rec.data, rec.length);
-
-			if (string(record.attrName) == attrName) break;
-		}
-
-		if (status == OK) {
-			status = hfs->deleteRecord();
-			if(status != OK) {
-				hfs->endScan();
-				delete hfs;
-				return status;
-			}
+	// Iterate through matching records and delete them
+	while ((status = hfs.scanNext(rid)) == OK) {
+		status = hfs.deleteRecord();
+		if (status != OK) {
+			hfs.endScan();
+			return status;
 		}
 	}
-	Status s0 = status; // saves status of loop after exit
-	// free the memory
-	hfs->endScan();
-	delete hfs;
-	if (status != NORECORDS) return status;
-	// make sure loop terminated because we it hit the end of the file
-	if(s0 != FILEEOF) return s0;
 
-	// reached end of file, should have deleted all tuples from relation
-	return OK;
+	// End the scan and check termination status
+	hfs.endScan();
+	return (status == FILEEOF) ? OK : status;
 }

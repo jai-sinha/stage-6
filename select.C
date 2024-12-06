@@ -50,7 +50,7 @@ const Status QU_Select(const string & result,
 
 	// get attr info, or leave if null
 	if (attr != nullptr) {
-        attrDesc = new AttrDesc;
+      attrDesc = new AttrDesc;
 		status = attrCat->getInfo(attr->relName, attr->attrName, *attrDesc);
 		if (status != OK) {
 			delete attrDesc;
