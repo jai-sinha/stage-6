@@ -21,13 +21,14 @@ const Status QU_Delete(const string & relation,
 	HeapFileScan* hfs;
 
 	// setting up the scans
-	if (relation.empty() || attrName.empty()) return BADCATPARM;
+	if (relation.empty() || attrName.empty() || string(attrValue).empty()) 
+		return BADCATPARM;
 
-	hfs = new HeapFileScan(RELCATNAME, status);// maybe I need to pass in ATTRCATNAME
+	hfs = new HeapFileScan(relation, status);// maybe I need to pass in ATTRCATNAME
 	if (status != OK) return status;
 
 	// starting a scan to locate the qualifying tuples in the attr table
-	if ((status = hfs->startScan(0, relation.length() + 1, type, attrValue, op)) != OK) {
+	if ((status = hfs->startScan(0, sizeof(AttrDesc) + 1, type, attrValue, op)) != OK) {
 		delete hfs;
 		return status;
 	}
@@ -42,7 +43,11 @@ const Status QU_Delete(const string & relation,
 	// looping through the attributes catalogue and deleting until no more qualifying records found 
 	while(status == OK) {
 		while((status = hfs->scanNext(rid)) == OK) {
-			if ((status = hfs->getRecord(rec)) != OK) return status;
+			if ((status = hfs->getRecord(rec)) != OK) {
+				hfs->endScan();
+				delete hfs;
+				return status;
+			}
 
 			assert(sizeof(AttrDesc) == rec.length);
 			memcpy(&record, rec.data, rec.length);
@@ -52,10 +57,14 @@ const Status QU_Delete(const string & relation,
 
 		if (status == OK) {
 			status = hfs->deleteRecord();
-			// not going to return status now to prevent memory leak
+			if(status != OK) {
+				hfs->endScan();
+				delete hfs;
+				return status;
+			}
 		}
 	}
-	Status s0 = status; // return status of the exit loop
+	Status s0 = status; // saves status of loop after exit
 	// free the memory
 	hfs->endScan();
 	delete hfs;
@@ -66,5 +75,3 @@ const Status QU_Delete(const string & relation,
 	// reached end of file, should have deleted all tuples from relation
 	return OK;
 }
-
-
