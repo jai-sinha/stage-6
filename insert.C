@@ -5,6 +5,7 @@ const Status QU_Insert(const string &relationName,
         const int numAttributes, 
         const attrInfo attributeList[])
 {
+    cout << "Doing QU_Insert " << endl;
     Status operationStatus;
     int relationAttrCount;
     AttrDesc* relationAttributes;
