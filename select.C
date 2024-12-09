@@ -109,13 +109,13 @@ const Status ScanSelect(const string & result,
                 status = scan.startScan(attrDesc->attrOffset, attrDesc->attrLen, STRING, filter, op);
                 break;
             case FLOAT: {
-                float f = atof(filter);
-                status = scan.startScan(attrDesc->attrOffset, attrDesc->attrLen, FLOAT, (char *)&f, op);
+                *((float*) filter) = atof(filter);
+                status = scan.startScan(attrDesc->attrOffset, attrDesc->attrLen, FLOAT, filter, op);
                 break;
             }
             case INTEGER: {
-                int i = atoi(filter);
-                status = scan.startScan(attrDesc->attrOffset, attrDesc->attrLen, INTEGER, (char *)&i, op);
+                *((int*) filter) = atoi(filter);
+                status = scan.startScan(attrDesc->attrOffset, attrDesc->attrLen, INTEGER, filter, op);
                 break;
         }
     }
