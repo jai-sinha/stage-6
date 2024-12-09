@@ -55,22 +55,37 @@ const Status QU_Delete(const string &relation,
 	if (status != OK) return status;
 
 	// Start scanning with the provided filter
-
 	switch (attrDesc.attrType) {
             case STRING:
                 status = hfs.startScan(attrDesc.attrOffset, attrDesc.attrLen, STRING, attrValue, op);
                 break;
             case FLOAT: {
-                float f = atof(attrValue);
-                status = hfs.startScan(attrDesc.attrOffset, attrDesc.attrLen, FLOAT, (char *)&f, op);
+                *((float*) attrValue) = atof(attrValue);
+                status = hfs.startScan(attrDesc.attrOffset, attrDesc.attrLen, FLOAT, attrValue, op);
                 break;
             }
             case INTEGER: {
-                int i = atoi(attrValue);
-                status = hfs.startScan(attrDesc.attrOffset, attrDesc.attrLen, INTEGER, (char *)&i, op);
+                *((int*) attrValue) = atoi(attrValue);
+                status = hfs.startScan(attrDesc.attrOffset, attrDesc.attrLen, INTEGER, attrValue, op);
                 break;
         }
 	}
+
+	// switch (attrDesc.attrType) {
+    //         case STRING:
+    //             status = hfs.startScan(attrDesc.attrOffset, attrDesc.attrLen, STRING, attrValue, op);
+    //             break;
+    //         case FLOAT: {
+    //             float f = atof(attrValue);
+    //             status = hfs.startScan(attrDesc.attrOffset, attrDesc.attrLen, FLOAT, (char *)&f, op);
+    //             break;
+    //         }
+    //         case INTEGER: {
+    //             int i = atoi(attrValue);
+    //             status = hfs.startScan(attrDesc.attrOffset, attrDesc.attrLen, INTEGER, (char *)&i, op);
+    //             break;
+    //     }
+	// }
 	if (status != OK) return status;
 
 	// Iterate through matching records and delete them
